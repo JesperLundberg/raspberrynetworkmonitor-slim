@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Network Monitor</title>
+  <meta http-equiv="refresh" content="60">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg:        #eff1f5;
+      --bg-soft:   #e6e9ef;
+      --border:    #ccd0da;
+      --text:      #4c4f69;
+      --subtext:   #5c5f77;
+      --accent:    #1e66f5;
+      --accent-2:  #dc8a78;
+      --green:     #40a02b;
+      --yellow:    #df8e1d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #f4f5fb 0, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 1.5rem auto 2.5rem;
+      padding: 0 1rem;
+      width: 100%;
+    }
+
+    header { text-align: center; margin-bottom: 1.2rem; }
+    header h1 {
+      font-size: 2rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.25rem;
+    }
+    header p { font-size: 0.95rem; color: var(--subtext); }
+    header .tagline { font-size: 0.8rem; opacity: 0.85; }
+
+    /* STATUS CARDS */
+    .status-row {
+      display: grid;
+      gap: 0.9rem;
+      margin-top: 1.2rem;
+    }
+    @media (min-width: 768px) {
+      .status-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    .status-card {
+      background: #ffffffcc;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+      padding: 0.7rem 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .status-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--subtext);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-title span.label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .status-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .status-value {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .status-sub { font-size: 0.8rem; color: var(--subtext); }
+    .status-updated { font-size: 0.7rem; color: var(--subtext); text-align: right; }
+
+    /* CHARTS – STACKED */
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .chart-card {
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: 100%;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chart-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .chart-title span.dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .chart-meta {
+      font-size: 0.85rem;
+      color: var(--subtext);
+    }
+
+    .chart-img-wrap {
+      margin-top: 0.5rem;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid var(--border);
+      width: 100%;
+    }
+
+    .chart-img-wrap img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Bubble / pill in chart header (top right) */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.15rem 0.6rem;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.9);
+      color: var(--subtext);
+      white-space: nowrap;
+    }
+
+    .pill-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--subtext);
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <header>
+      <h1>Network Monitor</h1>
+      <p>Lightweight graphs rendered on your Pi.</p>
+      <p class="tagline">Auto-refresh every 60 seconds.</p>
+    </header>
+
+    <!-- STATUS CARDS -->
+    <section class="status-row">
+
+      <article class="status-card">
+        <div class="status-title">
+          <span class="label"><span class="status-dot"></span> Ping</span>
+        </div>
+        <div class="status-value" id="status-ping-main">–</div>
+        <div class="status-sub">1.1.1.1 / 8.8.8.8</div>
+        <div class="status-updated" id="status-ping-updated">Updated: –</div>
+      </article>
+
+      <article class="status-card">
+        <div class="status-title">
+          <span class="label"><span class="status-dot" style="background:var(--accent-2);"></span> Speed</span>
+        </div>
+        <div class="status-value" id="status-speed-main">–</div>
+        <div class="status-sub">Download / Upload (Mbps)</div>
+        <div class="status-updated" id="status-speed-updated">Updated: –</div>
+      </article>
+
+      <article class="status-card">
+        <div class="status-title">
+          <span class="label"><span class="status-dot" style="background:var(--yellow);"></span> Devices</span>
+        </div>
+        <div class="status-value" id="status-devices-main">–</div>
+        <div class="status-sub">Active devices on LAN</div>
+        <div class="status-updated" id="status-devices-updated">Updated: –</div>
+      </article>
+
+    </section>
+
+    <!-- GRAPHS -->
+    <main class="grid">
+
+      <!-- Ping -->
+      <section class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <span class="dot"></span>
+            <span>Ping RTT</span>
+          </div>
+          <div class="pill">
+            <span class="pill-dot" style="background:#1e66f5;"></span>
+            <span>1.1.1.1</span>
+            <span class="pill-dot" style="background:#40a02b; margin-left:0.5rem;"></span>
+            <span>8.8.8.8</span>
+          </div>
+        </div>
+        <div class="chart-meta">
+          Round-trip time (ms) over the last 24 hours.
+        </div>
+        <div class="chart-img-wrap">
+          <picture>
+            <!-- Mobile -->
+            <source srcset="netmon/ping_mobile.png" media="(max-width: 768px)">
+            <!-- Desktop -->
+            <img src="netmon/ping.png" alt="Ping chart">
+          </picture>
+        </div>
+      </section>
+
+      <!-- Speed -->
+      <section class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <span class="dot" style="background:#dc8a78;"></span>
+            <span>Internet Speed</span>
+          </div>
+          <div class="pill">
+            <span class="pill-dot" style="background:#dc8a78;"></span>
+            <span>Download</span>
+            <span class="pill-dot" style="background:#1e66f5; margin-left:0.5rem;"></span>
+            <span>Upload</span>
+          </div>
+        </div>
+        <div class="chart-meta">
+          Based on lightweight curl tests (last 24 hours).
+        </div>
+        <div class="chart-img-wrap">
+          <picture>
+            <source srcset="netmon/speed_mobile.png" media="(max-width: 768px)">
+            <img src="netmon/speed.png" alt="Speed chart">
+          </picture>
+        </div>
+      </section>
+
+      <!-- Devices -->
+      <section class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">
+            <span class="dot" style="background:#df8e1d;"></span>
+            <span>Active Devices</span>
+          </div>
+          <div class="pill">
+            <span class="pill-dot" style="background:#df8e1d;"></span>
+            <span>Devices on LAN</span>
+          </div>
+        </div>
+        <div class="chart-meta">
+          Unique IPs seen on the local network (last 24 hours).
+        </div>
+        <div class="chart-img-wrap">
+          <picture>
+            <source srcset="netmon/devices_mobile.png" media="(max-width: 768px)">
+            <img src="netmon/devices.png" alt="Devices chart">
+          </picture>
+        </div>
+      </section>
+
+    </main>
+
+    <footer>
+      Served by Raspberry Pi • Data stored in SQLite • Plots by gnuplot
+    </footer>
+
+  </div>
+
+  <!-- STATUS JSON SCRIPT -->
+  <script>
+    function formatTime(ts) {
+      if (!ts || ts <= 0) return "–";
+      const d = new Date(ts * 1000);
+
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mi = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+
+      // Svensk stil: 2025-12-03 16:55:01
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    }
+
+    function safeNum(v, decimals) {
+      const n = Number(v);
+      if (!isFinite(n)) return null;
+      return decimals != null ? n.toFixed(decimals) : n.toString();
+    }
+
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch("netmon/status.json?_=" + Date.now());
+        const data = await res.json();
+
+        // Ping
+        const p1 = data.ping && data.ping.host_1_1_1_1 || null;
+        const p2 = data.ping && data.ping.host_8_8_8_8 || null;
+
+        const p1r = p1 && safeNum(p1.rtt_ms, 1);
+        const p2r = p2 && safeNum(p2.rtt_ms, 1);
+
+        if (p1r || p2r) {
+          let txt = "";
+          if (p1r) txt += "1.1.1.1: " + p1r + " ms";
+          if (p1r && p2r) txt += " / ";
+          if (p2r) txt += "8.8.8.8: " + p2r + " ms";
+          setText("status-ping-main", txt);
+        }
+
+        const pingTs = (p1 && p1.ts) || (p2 && p2.ts) || null;
+        setText("status-ping-updated", "Updated: " + formatTime(pingTs));
+
+        // Speed
+        const s = data.speed;
+        if (s) {
+          const dl = safeNum(s.download_mbps, 1);
+          const ul = safeNum(s.upload_mbps, 1);
+          setText(
+            "status-speed-main",
+            (dl ? dl + " ↓" : "–") + " / " + (ul ? ul + " ↑" : "–") + " Mbps"
+          );
+          setText("status-speed-updated", "Updated: " + formatTime(s.ts));
+        }
+
+        // Devices
+        const d = data.devices;
+        if (d) {
+          setText("status-devices-main", safeNum(d.device_count, 0));
+          setText("status-devices-updated", "Updated: " + formatTime(d.ts));
+        }
+
+      } catch (e) {
+        console.error("Status update failed", e);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadStatus);
+  </script>
+
+</body>
+</html>

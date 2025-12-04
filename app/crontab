@@ -1,0 +1,7 @@
+# /etc/cron.d/netmon - cron jobs for netmon container
+
+*/5 * * * * root /opt/netmon/lua/net_ping.lua
+*/10 * * * * root /opt/netmon/lua/net_speed.lua
+*/5 * * * * root /opt/netmon/lua/net_devices.lua
+*/5 * * * * root /opt/netmon/make_plots.sh
+*/1 * * * * root /opt/netmon/lua/update_status.lua

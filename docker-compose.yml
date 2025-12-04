@@ -1,0 +1,32 @@
+services:
+  netmon:
+    build: ./app
+    container_name: netmon
+    restart: unless-stopped
+
+    network_mode: host
+    cap_add: [NET_RAW, NET_ADMIN]
+
+    environment: [TZ=Europe/Stockholm]
+
+    volumes:
+      # Persist SQLite DB on the host
+      - ./data/netmon.db:/opt/netmon/netmon.db
+      # Shared internal volume for PNGs + status.json
+      - netmon-www:/var/www/html/netmon
+
+  web:
+    image: nginx:alpine
+    container_name: netmon_web
+    restart: unless-stopped
+
+    ports: [8080:80]
+
+    volumes:
+      # Your static HTML lives on the host so you can edit it
+      - ./web/network.html:/usr/share/nginx/html/network.html:ro
+      # Share generated PNGs + status.json from internal volume
+      - netmon-www:/usr/share/nginx/html/netmon:ro
+
+volumes:
+  netmon-www:
