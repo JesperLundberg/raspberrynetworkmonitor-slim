@@ -18,9 +18,9 @@ RUN apt-get update && \
         tzdata \
         build-essential \
         libsqlite3-dev && \
-    # Install lsqlite3 via LuaRocks for Lua 5.1 ABI (used by LuaJIT)
     luarocks --lua-version=5.1 install lsqlite3 && \
-    # Clean up
+    apt-get remove -y build-essential libsqlite3-dev && \
+    apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Main working directory inside container
