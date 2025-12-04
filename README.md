@@ -7,10 +7,6 @@ A small, containerized network monitoring setup that:
 - generates PNG charts with gnuplot,
 - and serves a simple dashboard via Nginx.
 
-Everything runs in Docker and is platform-agnostic.
-
----
-
 ## Features
 
 - Ping monitoring (latency + packet loss)
@@ -21,8 +17,6 @@ Everything runs in Docker and is platform-agnostic.
 - Clean and minimal HTML dashboard
 
 Only the SQLite database is persisted; all charts and status files are regenerated.
-
----
 
 ## Structure
 
@@ -39,12 +33,10 @@ docker-compose.yml
 
 Two containers:
 
-- **netmon** – runs all scripts, writes data, generates charts  
+- **netmon** – runs all scripts, writes data, generates charts
 - **netmon_web** – serves the dashboard + generated images
 
 A shared Docker volume passes charts/status between them.
-
----
 
 ## Usage
 
@@ -62,8 +54,6 @@ http://localhost:8080/network.html
 ```
 
 (Replace `localhost` if hosted elsewhere.)
-
----
 
 ## Data persistence
 
@@ -84,8 +74,6 @@ docker compose up -d
 
 Charts and status files live inside a Docker volume and are regenerated automatically.
 
----
-
 ## Logs & debugging
 
 ```bash
@@ -99,8 +87,6 @@ Inside the netmon container:
 docker exec -it netmon sh
 cat /var/log/cron.log
 ```
-
----
 
 ## Notes
 
