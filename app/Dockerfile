@@ -3,10 +3,11 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Stockholm
 
-# Install minimal required tools
+# Install tools and build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         luajit \
+        luarocks \
         sqlite3 \
         gnuplot-nox \
         curl \
@@ -14,7 +15,12 @@ RUN apt-get update && \
         iputils-ping \
         cron \
         ca-certificates \
-        tzdata && \
+        tzdata \
+        build-essential \
+        libsqlite3-dev && \
+    # Install lsqlite3 via LuaRocks for Lua 5.1 ABI (used by LuaJIT)
+    luarocks --lua-version=5.1 install lsqlite3 && \
+    # Clean up
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Main working directory inside container
