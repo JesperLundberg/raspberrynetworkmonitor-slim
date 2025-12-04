@@ -1,7 +1,16 @@
 # /etc/cron.d/netmon - cron jobs for netmon container
 
-*/5 * * * * root /opt/netmon/lua/net_ping.lua
-*/10 * * * * root /opt/netmon/lua/net_speed.lua
-*/5 * * * * root /opt/netmon/lua/net_devices.lua
-*/5 * * * * root /opt/netmon/make_plots.sh
-*/1 * * * * root /opt/netmon/lua/update_status.lua
+# Ping every 5th minute: 00,05,10,...
+*/5 * * * * root /opt/netmon/lua/net_ping.lua >> /var/log/cron.log 2>&1
+
+# Speed every 10th minute, but at minute 2,12,22,...
+2-59/10 * * * * root /opt/netmon/lua/net_speed.lua >> /var/log/cron.log 2>&1
+
+# Devices every 5th minute, but at minute 1,6,11,...
+1-59/5 * * * * root /opt/netmon/lua/net_devices.lua >> /var/log/cron.log 2>&1
+
+# Plots every 5th minute, but at minute 3,8,13,...
+3-59/5 * * * * root /opt/netmon/make_plots.sh >> /var/log/cron.log 2>&1
+
+# Status every minute (but does not touch database)
+/* * * * * root /opt/netmon/lua/update_status.lua >> /var/log/cron.log 2>&1
