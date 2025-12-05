@@ -25,6 +25,6 @@ set title "Internet speed (Mbps)" tc rgb "#4c4f69"
 set xlabel "Time" tc rgb "#4c4f69"
 set ylabel "Mbps" tc rgb "#4c4f69"
 
-plot "< sqlite3 /opt/netmon/netmon.db \"SELECT ts, download_mbps, upload_mbps FROM speed ORDER BY ts;\"" \
+plot "< sqlite3 /opt/netmon/db/netmon.db\"SELECT ts, download_mbps, upload_mbps FROM speed ORDER BY ts;\"" \
         using 1:2 with lines lw 2 lc rgb "#dc8a78" notitle, \
      "" using 1:3 with lines lw 2 lc rgb "#1e66f5" notitle

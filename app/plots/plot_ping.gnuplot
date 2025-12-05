@@ -27,7 +27,7 @@ set title "Ping RTT (ms)" tc rgb "#4c4f69"
 set xlabel "Time" tc rgb "#4c4f69"
 set ylabel "RTT (ms)" tc rgb "#4c4f69"
 
-plot "< sqlite3 /opt/netmon/netmon.db \"SELECT ts, rtt_ms FROM ping WHERE host='1.1.1.1' ORDER BY ts;\"" \
+plot "< sqlite3 /opt/netmon/db/netmon.db\"SELECT ts, rtt_ms FROM ping WHERE host='1.1.1.1' ORDER BY ts;\"" \
         using 1:2 with lines lw 2 lc rgb "#1e66f5" notitle, \
-     "< sqlite3 /opt/netmon/netmon.db \"SELECT ts, rtt_ms FROM ping WHERE host='8.8.8.8' ORDER BY ts;\"" \
+     "< sqlite3 /opt/netmon/db/netmon.db\"SELECT ts, rtt_ms FROM ping WHERE host='8.8.8.8' ORDER BY ts;\"" \
         using 1:2 with lines lw 2 lc rgb "#40a02b" notitle

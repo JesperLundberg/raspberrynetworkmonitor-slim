@@ -25,5 +25,5 @@ set title "Active devices on LAN" tc rgb "#4c4f69"
 set xlabel "Time" tc rgb "#4c4f69"
 set ylabel "Device count" tc rgb "#4c4f69"
 
-plot "< sqlite3 /opt/netmon/netmon.db \"SELECT ts, device_count FROM devices ORDER BY ts;\"" \
+plot "< sqlite3 /opt/netmon/db/netmon.db\"SELECT ts, device_count FROM devices ORDER BY ts;\"" \
         using 1:2 with lines lw 2 lc rgb "#df8e1d" notitle
