@@ -2,21 +2,23 @@
 
 A small, containerized network monitoring setup that:
 
-- measures ping, speed and device count,
-- stores everything in a small SQLite database,
-- generates PNG charts with gnuplot,
-- and serves a simple dashboard via Nginx.
+- measures ping, speed and device count
+- stores everything in a lightweight SQLite database
+- generates PNG charts with gnuplot
+- serves a simple dashboard via Nginx
 
 ## Features
 
-- Ping monitoring (for 8.8.8.8 and 1.1.1.1)
+- Ping monitoring (1.1.1.1 and 8.8.8.8)
 - Download / upload speed sampling
 - LAN device count
 - Automatic chart generation (desktop + mobile versions)
 - Small JSON status file for quick dashboard rendering
 - Clean and minimal HTML dashboard
+- Runtime SQLite database lives entirely in RAM (tmpfs)
+- Automatic hourly backup ensures persistence without constant disk writes
 
-Only the SQLite database is persisted; all charts and status files are regenerated.
+Charts and status files are temporary and regenerated every cycle.
 
 ## Structure
 
@@ -26,14 +28,17 @@ app/        → data collection, plotting, cron
   plots/    → gnuplot configs
   Dockerfile
   crontab
+
 web/        → static dashboard HTML
-data/       → netmon.db (persisted)
+
+data/       → persisted backup of netmon.db
+
 docker-compose.yml
 ```
 
 Two containers:
 
-- **netmon** – runs all scripts, writes data, generates charts
+- **netmon** – runs scripts, writes data, generates charts
 - **netmon_web** – serves the dashboard + generated images
 
 A shared Docker volume passes charts/status between them.
@@ -55,15 +60,18 @@ http://localhost:8080/network.html
 
 (Replace `localhost` if hosted elsewhere.)
 
-## Data persistence
+## Persistence
 
-The only persistent file is:
+The live SQLite database is kept in RAM for speed and reduced wear.  
+An hourly backup is written to:
 
 ```
 data/netmon.db
 ```
 
-You can delete it to reset all history:
+On startup, if a backup exists, it is restored automatically.
+
+To reset history:
 
 ```bash
 docker compose down
@@ -71,8 +79,6 @@ rm data/netmon.db
 touch data/netmon.db
 docker compose up -d
 ```
-
-Charts and status files live inside a Docker volume and are regenerated automatically.
 
 ## Logs & debugging
 
@@ -93,4 +99,4 @@ cat /var/log/cron.log
 - Cron schedules are defined in `app/crontab`.
 - All scripts recreate their own tables if needed.
 - You can adjust sampling intervals by editing the cron file.
-- No platform assumptions — runs anywhere Docker does.
+- Works anywhere Docker does.
