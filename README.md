@@ -9,7 +9,7 @@ A small, containerized network monitoring setup that:
 
 ## Features
 
-- Ping monitoring (latency + packet loss)
+- Ping monitoring (for 8.8.8.8 and 1.1.1.1)
 - Download / upload speed sampling
 - LAN device count
 - Automatic chart generation (desktop + mobile versions)

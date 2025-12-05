@@ -5,9 +5,7 @@
 
 local sqlite3 = require("lsqlite3")
 
-local DB_PATH = "/opt/netmon/netmon.db"
-
-local HOST = (io.popen("hostname", "r"):read("*l")) or "unknown"
+local DB_PATH = "/opt/netmon/db/netmon.db"
 
 local DOWNLOAD_URLS = {
 	"https://speed.hetzner.de/10MB.bin",

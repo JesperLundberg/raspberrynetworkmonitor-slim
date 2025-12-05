@@ -3,7 +3,6 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Stockholm
 
-# Install tools and build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         luajit \
@@ -23,25 +22,18 @@ RUN apt-get update && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Main working directory inside container
 WORKDIR /opt/netmon
 
-# Copy Lua scripts into /opt/netmon/lua
 COPY lua ./lua
-
-# Copy gnuplot scripts into /opt/netmon/plots
 COPY plots ./plots
-
-# Copy shell script and cron config
 COPY make_plots.sh ./
 COPY crontab /etc/cron.d/netmon
 
-# Permissions
 RUN chmod +x /opt/netmon/make_plots.sh \
     && chmod +x /opt/netmon/lua/*.lua \
     && chmod 0644 /etc/cron.d/netmon \
     && mkdir -p /var/www/html/netmon \
+    && mkdir -p /opt/netmon/backups \
     && touch /var/log/cron.log
 
-# Run cron in foreground so container stays alive
 CMD ["cron", "-f"]
