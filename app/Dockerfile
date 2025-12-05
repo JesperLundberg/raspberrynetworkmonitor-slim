@@ -28,12 +28,14 @@ COPY lua ./lua
 COPY plots ./plots
 COPY make_plots.sh ./
 COPY crontab /etc/cron.d/netmon
+COPY entrypoint.sh ./entrypoint.sh
 
 RUN chmod +x /opt/netmon/make_plots.sh \
     && chmod +x /opt/netmon/lua/*.lua \
     && chmod 0644 /etc/cron.d/netmon \
     && mkdir -p /var/www/html/netmon \
     && mkdir -p /opt/netmon/backups \
+    && chmod +x /opt/netmon/entrypoint.sh \
     && touch /var/log/cron.log
 
-CMD ["cron", "-f"]
+CMD ["/opt/netmon/entrypoint.sh"]

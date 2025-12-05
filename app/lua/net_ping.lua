@@ -5,7 +5,7 @@
 
 local sqlite3 = require("lsqlite3")
 
-local DB_PATH = "/opt/netmon/netmon.db"
+local DB_PATH = "/opt/netmon/db/netmon.db"
 
 -- ---------- shell helper ----------
 
