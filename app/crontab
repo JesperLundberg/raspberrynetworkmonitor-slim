@@ -11,7 +11,7 @@
 3-59/5 * * * * root /opt/netmon/make_plots.sh >> /var/log/cron.log 2>&1
 
 # Status every minute (but does not touch database)
-/* * * * * root /opt/netmon/lua/update_status.lua >> /var/log/cron.log 2>&1
+* * * * * root /opt/netmon/lua/update_status.lua >> /var/log/cron.log 2>&1
 
 # Save the db to disk (from ram) every hour
 0 * * * * root sqlite3 /opt/netmon/db/netmon.db ".backup '/opt/netmon/backups/netmon.db'" >> /var/log/cron.log 2>&1
