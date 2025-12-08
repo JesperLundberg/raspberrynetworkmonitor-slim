@@ -1,23 +1,10 @@
 #!/usr/bin/env luajit
 
--- Ping 1.1.1.1 and 8.8.8.8 and store avg RTT + packet loss in SQLite.
--- Appends rows to table "ping": ts INTEGER, host TEXT, rtt_ms REAL, packet_loss REAL.
-
 local sqlite3 = require("lsqlite3")
+local utils = require("netmon_utils")
+local config = require("netmon_config")
 
-local DB_PATH = "/opt/netmon/db/netmon.db"
-
--- ---------- shell helper ----------
-
-local function run_cmd(cmd)
-	local f = io.popen(cmd, "r")
-	if not f then
-		return ""
-	end
-	local out = f:read("*a") or ""
-	f:close()
-	return out
-end
+local DB_PATH = config.DB_PATH
 
 -- Parse ping output for avg RTT (ms) and packet loss (%)
 local function parse_ping_output(output)
@@ -37,25 +24,17 @@ local function parse_ping_output(output)
 	return avg, loss
 end
 
+--Ping a host and parse average RTT and packet loss.
 local function ping_host(host)
-	-- -c 4 = four packets, -n = numeric only
 	local cmd = string.format("ping -n -c 4 %s 2>/dev/null", host)
-	local out = run_cmd(cmd)
+	local out = utils.run_cmd(cmd)
 	local rtt, loss = parse_ping_output(out)
 	return rtt, loss
 end
 
--- ---------- SQLite helpers ----------
-
+--Open the ping table in the main database.
 local function open_db()
-	-- Open the database file
-	local db, err = sqlite3.open(DB_PATH)
-	assert(db, "Failed to open database: " .. (err or DB_PATH))
-
-	-- Wait up to 2000ms if the database is locked
-	db:busy_timeout(2000)
-
-	-- Ensure the ping table exists
+	local db = utils.open_db(DB_PATH)
 	local ok, exec_err = db:exec([[
     CREATE TABLE IF NOT EXISTS ping (
       ts          INTEGER NOT NULL,
@@ -64,12 +43,11 @@ local function open_db()
       packet_loss REAL
     );
   ]])
-
 	assert(ok == sqlite3.OK, "Failed to create ping table: " .. tostring(exec_err))
-
 	return db
 end
 
+--Insert ping into the database
 local function insert_ping(db, ts, host, rtt_ms, packet_loss)
 	local stmt = db:prepare("INSERT INTO ping (ts, host, rtt_ms, packet_loss) VALUES (?, ?, ?, ?);")
 	assert(stmt, "Failed to prepare INSERT into ping")
@@ -77,8 +55,6 @@ local function insert_ping(db, ts, host, rtt_ms, packet_loss)
 	assert(stmt:step() == sqlite3.DONE, "INSERT into ping failed")
 	stmt:finalize()
 end
-
--- ---------- main ----------
 
 local ts = os.time()
 local db = open_db()

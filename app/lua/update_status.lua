@@ -1,161 +1,130 @@
 #!/usr/bin/env luajit
 
--- Generate /var/www/html/netmon/status.json with latest values
--- Requires lsqlite3 and the existing netmon.db schema.
+local json = require("dkjson")
+local utils = require("netmon_utils")
+local config = require("netmon_config")
 
-local sqlite3 = require("lsqlite3")
+local PING_HOSTS = {
+	"1.1.1.1",
+	"8.8.8.8",
+}
 
-local DB_PATH = "/opt/netmon/db/netmon.db"
-local JSON_PATH = "/var/www/html/netmon/status.json"
+--Fetch the latest ping row for each host in PING_HOSTS.
+local function get_latest_ping_for_hosts(db, hosts)
+	local result = {}
 
--- Open SQLite and set busy timeout
-local function open_db()
-	-- Open the database file
-	local db, err = sqlite3.open(DB_PATH)
-	assert(db, "Failed to open database: " .. (err or DB_PATH))
-
-	-- Wait up to 2000ms if the database is locked
-	db:busy_timeout(2000)
-
-	return db
-end
-
--- Fetch a single row as a table (or nil)
-local function fetch_one(db, sql)
-	local row
-	for r in db:nrows(sql) do
-		row = r
-		break
-	end
-	return row
-end
-
--- Very small JSON helpers
-
-local function json_number(v)
-	if v == nil then
-		return "null"
-	end
-	return tostring(v)
-end
-
-local function json_status(now, ping_1111, ping_8888, speed, devices)
-	local parts = {}
-	local function add(s)
-		table.insert(parts, s)
-	end
-
-	add("{\n")
-	add(string.format('  "generated_at": %d,\n', now))
-
-	-- Ping block
-	add('  "ping": {\n')
-	if ping_1111 then
-		add(
-			string.format(
-				'    "host_1_1_1_1": {"ts": %d, "rtt_ms": %s, "packet_loss": %s},\n',
-				ping_1111.ts or 0,
-				json_number(ping_1111.rtt_ms),
-				json_number(ping_1111.packet_loss)
-			)
+	for _, host in ipairs(hosts) do
+		local sql = string.format(
+			[[
+      SELECT ts, host, rtt_ms, packet_loss
+      FROM ping
+      WHERE host = '%s'
+      ORDER BY ts DESC
+      LIMIT 1;
+    ]],
+			host
 		)
-	else
-		add('    "host_1_1_1_1": null,\n')
+
+		local row = utils.fetch_one(db, sql)
+		result[host] = row
 	end
 
-	if ping_8888 then
-		add(
-			string.format(
-				'    "host_8_8_8_8": {"ts": %d, "rtt_ms": %s, "packet_loss": %s}\n',
-				ping_8888.ts or 0,
-				json_number(ping_8888.rtt_ms),
-				json_number(ping_8888.packet_loss)
-			)
-		)
-	else
-		add('    "host_8_8_8_8": null\n')
-	end
-	add("  },\n")
-
-	-- Speed block
-	add('  "speed": ')
-	if speed then
-		add(
-			string.format(
-				'{"ts": %d, "download_mbps": %s, "upload_mbps": %s},\n',
-				speed.ts or 0,
-				json_number(speed.download_mbps),
-				json_number(speed.upload_mbps)
-			)
-		)
-	else
-		add("null,\n")
-	end
-
-	-- Devices block
-	add('  "devices": ')
-	if devices then
-		add(string.format('{"ts": %d, "device_count": %s}\n', devices.ts or 0, json_number(devices.device_count)))
-	else
-		add("null\n")
-	end
-
-	add("}\n")
-	return table.concat(parts)
+	return result
 end
 
--- Main logic
+--Fetch the latest speed row, if any.
+local function get_latest_speed(db)
+	local sql = [[
+    SELECT ts, download_mbps, upload_mbps
+    FROM speed
+    ORDER BY ts DESC
+    LIMIT 1;
+  ]]
+	return utils.fetch_one(db, sql)
+end
 
-local now = os.time()
-local db = open_db()
+--Fetch the latest devices row, if any.
+local function get_latest_devices(db)
+	local sql = [[
+    SELECT ts, device_count
+    FROM devices
+    ORDER BY ts DESC
+    LIMIT 1;
+  ]]
+	return utils.fetch_one(db, sql)
+end
 
-local ping_1111 = fetch_one(
-	db,
-	[[
-  SELECT ts, rtt_ms, packet_loss
-  FROM ping
-  WHERE host = '1.1.1.1'
-  ORDER BY ts DESC
-  LIMIT 1;
-]]
-)
+--Build the status JSON document as a string.
+local function json_status(now_ts, ping_rows, speed_row, devices_row)
+	-- Build ping section as a map from host -> object or null
+	local ping_obj = {}
+	for host, row in pairs(ping_rows) do
+		if row then
+			ping_obj[host] = {
+				ts = row.ts or 0,
+				rtt_ms = row.rtt_ms,
+				packet_loss = row.packet_loss,
+			}
+		else
+			ping_obj[host] = json.null
+		end
+	end
 
-local ping_8888 = fetch_one(
-	db,
-	[[
-  SELECT ts, rtt_ms, packet_loss
-  FROM ping
-  WHERE host = '8.8.8.8'
-  ORDER BY ts DESC
-  LIMIT 1;
-]]
-)
+	-- Optional speed section
+	local speed_obj
+	if speed_row then
+		speed_obj = {
+			ts = speed_row.ts or 0,
+			download_mbps = speed_row.download_mbps,
+			upload_mbps = speed_row.upload_mbps,
+		}
+	else
+		speed_obj = json.null
+	end
 
-local speed = fetch_one(
-	db,
-	[[
-  SELECT ts, download_mbps, upload_mbps
-  FROM speed
-  ORDER BY ts DESC
-  LIMIT 1;
-]]
-)
+	-- Optional devices section
+	local devices_obj
+	if devices_row then
+		devices_obj = {
+			ts = devices_row.ts or 0,
+			device_count = devices_row.device_count,
+		}
+	else
+		devices_obj = json.null
+	end
 
-local devices = fetch_one(
-	db,
-	[[
-  SELECT ts, device_count
-  FROM devices
-  ORDER BY ts DESC
-  LIMIT 1;
-]]
-)
+	-- Complete document
+	local doc = {
+		generated_at = now_ts,
+		ping = ping_obj,
+		speed = speed_obj,
+		devices = devices_obj,
+	}
 
-db:close()
+	-- Pretty JSON (indent=true)
+	local json_str, err = json.encode(doc, { indent = true })
+	assert(json_str, "Failed to encode status JSON: " .. tostring(err))
 
-local json = json_status(now, ping_1111, ping_8888, speed, devices)
+	return json_str
+end
 
-local f, err = io.open(JSON_PATH, "w")
-assert(f, "Failed to open status.json for write: " .. tostring(err))
-f:write(json)
-f:close()
+--Main entry point: read latest rows and write status.json.
+local function main()
+	local db = utils.open_db(config.DB_PATH)
+
+	local ping_rows = get_latest_ping_for_hosts(db, PING_HOSTS)
+	local speed_row = get_latest_speed(db)
+	local devices_row = get_latest_devices(db)
+
+	db:close()
+
+	local now_ts = os.time()
+	local body = json_status(now_ts, ping_rows, speed_row, devices_row)
+
+	local f, err = io.open(config.JSON_PATH, "w")
+	assert(f, "Failed to open status JSON file: " .. tostring(err))
+	f:write(body)
+	f:close()
+end
+
+main()

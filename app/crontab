@@ -15,3 +15,6 @@
 
 # Save the db to disk (from ram) every hour
 0 * * * * root sqlite3 /opt/netmon/db/netmon.db ".backup '/opt/netmon/backups/netmon.db'" >> /var/log/cron.log 2>&1
+
+# Run the rotate script once a week at 00 (but wait 15 seconds to avoid conflicts)
+0 0 * * 0 root sleep 15 && /opt/netmon/lua/netmon_rotate.lua >> /var/log/cron.log 2>&1

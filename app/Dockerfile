@@ -17,7 +17,7 @@ RUN apt-get update && \
         tzdata \
         build-essential \
         libsqlite3-dev && \
-    luarocks --lua-version=5.1 install lsqlite3 && \
+    luarocks --lua-version=5.1 install lsqlite3 dkjson && \
     apt-get remove -y build-essential libsqlite3-dev && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

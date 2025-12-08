@@ -1,11 +1,10 @@
 #!/usr/bin/env luajit
 
--- Lightweight speed test using curl, written in LuaJIT.
--- Stores results in SQLite: table "speed" (ts, download_mbps, upload_mbps)
-
 local sqlite3 = require("lsqlite3")
+local utils = require("netmon_utils")
+local config = require("netmon_config")
 
-local DB_PATH = "/opt/netmon/db/netmon.db"
+local DB_PATH = config.DB_PATH
 
 local DOWNLOAD_URLS = {
 	"https://speed.hetzner.de/10MB.bin",
@@ -16,17 +15,9 @@ local DOWNLOAD_URLS = {
 local UPLOAD_URL = "https://speed.cloudflare.com/__up"
 local UPLOAD_SIZE = 512 * 1024 -- bytes
 
--- ---------- SQLite helpers ----------
-
+--Open the speed table in the main database.
 local function open_db()
-	-- Open the database file
-	local db, err = sqlite3.open(DB_PATH)
-	assert(db, "Failed to open database: " .. (err or DB_PATH))
-
-	-- Wait up to 2000ms if the database is locked
-	db:busy_timeout(2000)
-
-	-- Ensure the speed table exists
+	local db = utils.open_db(DB_PATH)
 	local ok, exec_err = db:exec([[
     CREATE TABLE IF NOT EXISTS speed (
       ts            INTEGER NOT NULL,
@@ -34,9 +25,7 @@ local function open_db()
       upload_mbps   REAL
     );
   ]])
-
 	assert(ok == sqlite3.OK, "Failed to create speed table: " .. tostring(exec_err))
-
 	return db
 end
 
@@ -49,18 +38,6 @@ local function insert_speed(db, ts, dl_mbps, ul_mbps)
 	stmt:finalize()
 
 	assert(rc == sqlite3.DONE, "INSERT into speed failed with rc=" .. tostring(rc))
-end
-
--- ---------- Shell helpers ----------
-
-local function run_cmd(cmd)
-	local f = io.popen(cmd, "r")
-	if not f then
-		return ""
-	end
-	local out = f:read("*a") or ""
-	f:close()
-	return out
 end
 
 -- Parse {"bytes":123,"time":0.123} into numbers
@@ -81,19 +58,17 @@ local function fmt(v)
 	return string.format("%.2f", v or 0)
 end
 
--- ------------ Download test ------------
-
 local dl_bytes, dl_time = 0, 0.0
 
 for _, url in ipairs(DOWNLOAD_URLS) do
-	local cmd = string.format(
+	local cmd_download = string.format(
 		"curl -4 -L -o /dev/null -s "
 			.. "--max-time 20 "
 			.. "-w '{\"bytes\":%%{size_download},\"time\":%%{time_total}}' '%s' "
 			.. '|| echo \'{"bytes":0,"time":0}\'',
 		url
 	)
-	local json = run_cmd(cmd)
+	local json = utils.run_cmd(cmd_download)
 	local b, t = parse_json_bytes_time(json)
 	if b > 0 then
 		dl_bytes, dl_time = b, t
@@ -106,8 +81,6 @@ if dl_bytes > 0 then
 	dl_mbit = calc_mbit(dl_bytes, dl_time)
 end
 
--- ------------ Upload test ------------
-
 -- Generate UPLOAD_SIZE bytes from /dev/zero and pipe to curl
 local cmd_upload = string.format(
 	"dd if=/dev/zero bs=%d count=1 2>/dev/null | "
@@ -119,7 +92,7 @@ local cmd_upload = string.format(
 	UPLOAD_URL
 )
 
-local ul_json = run_cmd(cmd_upload)
+local ul_json = utils.run_cmd(cmd_upload)
 local ul_bytes, ul_time = parse_json_bytes_time(ul_json)
 
 local ul_mbit = 0.0
@@ -127,13 +100,10 @@ if ul_bytes > 0 then
 	ul_mbit = calc_mbit(ul_bytes, ul_time)
 end
 
--- ------------ Store in SQLite ------------
-
 local db = open_db()
 local ts = os.time()
 
 insert_speed(db, ts, dl_mbit, ul_mbit)
 db:close()
 
--- Optional: print a short log line
 io.stdout:write(string.format("Saved speed sample at %d: dl=%s Mbps, ul=%s Mbps\n", ts, fmt(dl_mbit), fmt(ul_mbit)))

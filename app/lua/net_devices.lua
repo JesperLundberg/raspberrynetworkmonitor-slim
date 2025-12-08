@@ -1,13 +1,10 @@
 #!/usr/bin/env luajit
 
--- Count devices using arp-scan instead of ip neigh.
--- Stores results in SQLite table "devices" (ts INTEGER, device_count INTEGER).
-
 local sqlite3 = require("lsqlite3")
+local utils = require("netmon_utils")
+local config = require("netmon_config")
 
-local DB_PATH = "/opt/netmon/db/netmon.db"
-
--- ---------- Interface detection ----------
+local DB_PATH = config.DB_PATH
 
 local function iface_exists(iface)
 	local f = io.open("/sys/class/net/" .. iface, "r")
@@ -39,26 +36,8 @@ if not INTERFACE then
 	os.exit(1)
 end
 
--- ---------- Shell helper ----------
-
-local function run_cmd(cmd)
-	local f = io.popen(cmd, "r")
-	if not f then
-		return ""
-	end
-	local out = f:read("*a") or ""
-	f:close()
-	return out
-end
-
--- ---------- SQLite helpers ----------
-
 local function open_db()
-	local db, err = sqlite3.open(DB_PATH)
-	assert(db, "Failed to open database: " .. (err or DB_PATH))
-
-	-- Wait up to 2000ms if the database is locked
-	db:busy_timeout(2000)
+	local db = utils.open_db(DB_PATH)
 
 	-- Ensure table exists
 	local ok, exec_err = db:exec([[
@@ -68,7 +47,7 @@ local function open_db()
     );
   ]])
 
-	assert(ok == sqlite3.OK, "Failed to create table: " .. tostring(exec_err))
+	assert(ok == sqlite3.OK, "Failed to create devices table: " .. tostring(exec_err))
 
 	return db
 end
@@ -81,14 +60,12 @@ local function insert_devices(db, ts, count)
 	stmt:finalize()
 end
 
--- ---------- Scan devices via arp-scan ----------
-
 local function scan_devices(iface)
 	-- Example arp-scan output lines:
 	-- 192.168.1.1   7c:77:16:12:8a:a8   Some Vendor
 	-- We only care about the IP and deduplicate.
 	local cmd = string.format("/usr/sbin/arp-scan --localnet --interface=%s 2>/dev/null", iface)
-	local out = run_cmd(cmd)
+	local out = utils.run_cmd(cmd)
 
 	local seen = {}
 
@@ -101,8 +78,6 @@ local function scan_devices(iface)
 
 	return seen
 end
-
--- ---------- Main ----------
 
 local neighbors = scan_devices(INTERFACE)
 
