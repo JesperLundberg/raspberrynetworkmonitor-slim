@@ -11,6 +11,8 @@ services:
       - netmon-www:/var/www/html/netmon
       # Persist SQLite DB on the host
       - ./data:/opt/netmon/backups
+      # Persist the archives on the host
+      - ./data/archive:/opt/netmon/archive
 
   web:
     build: ./web

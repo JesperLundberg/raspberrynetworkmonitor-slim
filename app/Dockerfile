@@ -17,12 +17,16 @@ RUN apt-get update && \
         tzdata \
         build-essential \
         libsqlite3-dev && \
-    luarocks --lua-version=5.1 install lsqlite3 dkjson && \
+    luarocks --lua-version=5.1 install lsqlite3 && \
+    luarocks --lua-version=5.1 install dkjson && \
     apt-get remove -y build-essential libsqlite3-dev && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /opt/netmon
+
+# Set lua path so the lua modules are found
+ENV LUA_PATH="/opt/netmon/lua/?.lua;/opt/netmon/lua/?/init.lua;;"
 
 COPY lua ./lua
 COPY plots ./plots

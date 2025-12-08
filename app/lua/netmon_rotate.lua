@@ -111,7 +111,6 @@ local function move_table(tbl)
 		if tbl == "ping" then
 			-- Columns: ts, host, rtt_ms, packet_loss
 			stmt:reset()
-			stmt:clear_bindings()
 			assert(
 				stmt:bind_values(row.ts, row.host, row.rtt_ms, row.packet_loss) == sqlite3.OK,
 				"bind_values failed for ping"
@@ -120,7 +119,6 @@ local function move_table(tbl)
 		elseif tbl == "speed" then
 			-- Columns: ts, download_mbps, upload_mbps
 			stmt:reset()
-			stmt:clear_bindings()
 			assert(
 				stmt:bind_values(row.ts, row.download_mbps, row.upload_mbps) == sqlite3.OK,
 				"bind_values failed for speed"
@@ -129,7 +127,6 @@ local function move_table(tbl)
 		elseif tbl == "devices" then
 			-- Columns: ts, device_count
 			stmt:reset()
-			stmt:clear_bindings()
 			assert(stmt:bind_values(row.ts, row.device_count) == sqlite3.OK, "bind_values failed for devices")
 			assert(stmt:step() == sqlite3.DONE, "INSERT into archive devices failed")
 		end
