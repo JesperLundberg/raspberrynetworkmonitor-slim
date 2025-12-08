@@ -1,5 +1,3 @@
-LUA_PATH=/opt/netmon/lua/?.lua;/opt/netmon/lua/?/init.lua;;
-
 # Ping every 5th minute: 00,05,10,...
 */5 * * * * root /opt/netmon/lua/net_ping.lua >> /var/log/cron.log 2>&1
 
