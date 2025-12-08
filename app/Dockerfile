@@ -2,6 +2,8 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Stockholm
+# Set lua path so the lua modules are found
+ENV LUA_PATH="/opt/netmon/lua/?.lua;/opt/netmon/lua/?/init.lua;;"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -24,9 +26,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /opt/netmon
-
-# Set lua path so the lua modules are found
-ENV LUA_PATH="/opt/netmon/lua/?.lua;/opt/netmon/lua/?/init.lua;;"
 
 COPY lua ./lua
 COPY plots ./plots
