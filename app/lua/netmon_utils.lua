@@ -30,10 +30,11 @@ end
 
 --Fetch a single row from a SQL query (or nil if no rows).
 function M.fetch_one(db, sql)
-	-- Create an iterator...
-	local iter = db:nrows(sql)
-	-- ...and call it once to get one (or nil)
-	return iter()
+	-- Use nrows as it is intended: in a generic for-loop
+	for row in db:nrows(sql) do
+		return row -- Return the first row only
+	end
+	return nil -- No rows
 end
 
 return M
