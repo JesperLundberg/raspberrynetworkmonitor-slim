@@ -3,8 +3,7 @@
 local sqlite3 = require("lsqlite3")
 local utils = require("netmon_utils")
 local config = require("netmon_config")
-
-local DB_PATH = config.DB_PATH
+local parse = require("netmon_parse")
 
 local function iface_exists(iface)
 	local f = io.open("/sys/class/net/" .. iface, "r")
@@ -30,65 +29,51 @@ local function detect_iface()
 	return nil
 end
 
-local INTERFACE = detect_iface()
-if not INTERFACE then
-	io.stderr:write("net_devices.lua: no suitable interface found\n")
-	os.exit(1)
-end
-
 local function open_db()
-	local db = utils.open_db(DB_PATH)
-
-	-- Ensure table exists
-	local ok, exec_err = db:exec([[
+	utils.ensure_dir(config.DB_DIR)
+	local db = utils.open_db(config.DB_PATH)
+	local rc = db:exec([[
     CREATE TABLE IF NOT EXISTS devices (
       ts           INTEGER NOT NULL,
       device_count INTEGER
     );
+    CREATE INDEX IF NOT EXISTS idx_devices_ts ON devices(ts);
   ]])
-
-	assert(ok == sqlite3.OK, "Failed to create devices table: " .. tostring(exec_err))
-
+	assert(rc == sqlite3.OK, "Failed to create devices table: " .. db:errmsg())
 	return db
 end
 
 local function insert_devices(db, ts, count)
-	local stmt = db:prepare("INSERT INTO devices (ts, device_count) VALUES (?, ?);")
-	assert(stmt, "Failed to prepare INSERT into devices")
-	stmt:bind_values(ts, count)
-	assert(stmt:step() == sqlite3.DONE, "INSERT into devices failed")
+	local stmt = assert(db:prepare("INSERT INTO devices (ts, device_count) VALUES (?, ?);"), db:errmsg())
+	assert(stmt:bind_values(ts, count) == sqlite3.OK, "bind failed: " .. db:errmsg())
+	local rc = stmt:step()
 	stmt:finalize()
+	assert(rc == sqlite3.DONE, "INSERT into devices failed: " .. db:errmsg())
 end
 
-local function scan_devices(iface)
-	-- Example arp-scan output lines:
-	-- 192.168.1.1   7c:77:16:12:8a:a8   Some Vendor
-	-- We only care about the IP and deduplicate.
-	local cmd = string.format("/usr/sbin/arp-scan --localnet --interface=%s 2>/dev/null", iface)
-	local out = utils.run_cmd(cmd)
-
-	local seen = {}
-
-	for line in out:gmatch("[^\r\n]+") do
-		local ip = line:match("^(%d+%.%d+%.%d+%.%d+)%s+[%x:]+%s+")
-		if ip then
-			seen[ip] = true
-		end
+local function main()
+	local iface = detect_iface()
+	if not iface then
+		io.stderr:write("net_devices.lua: no suitable interface found\n")
+		os.exit(1)
 	end
 
-	return seen
+	-- arp-scan is on PATH in the Alpine image; no hardcoded sbin location.
+	local out = utils.run_cmd(string.format("arp-scan --localnet --interface=%s 2>/dev/null", iface))
+	local count = parse.count_arp_scan(out)
+
+	-- No replies at all almost always means the scan failed (missing capability,
+	-- interface down), not that the LAN is empty. Record a gap instead of 0.
+	if count == 0 then
+		io.stderr:write("net_devices.lua: arp-scan found no devices; skipping sample\n")
+		os.exit(1)
+	end
+
+	local db = open_db()
+	insert_devices(db, os.time(), count)
+	db:close()
+
+	io.stdout:write(string.format("net_devices.lua: iface=%s count=%d\n", iface, count))
 end
 
-local neighbors = scan_devices(INTERFACE)
-
-local count = 0
-for _ in pairs(neighbors) do
-	count = count + 1
-end
-
-local ts = os.time()
-local db = open_db()
-insert_devices(db, ts, count)
-db:close()
-
-io.stdout:write(string.format("net_devices.lua: iface=%s count=%d\n", INTERFACE, count))
+main()

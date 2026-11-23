@@ -3,38 +3,53 @@ local config = require("netmon_config")
 
 local M = {}
 
---Ensure that a directory exists (uses `mkdir -p` under the hood).
+-- Ensure that a directory exists.
 function M.ensure_dir(path)
-	-- Simple and good enough for this use case
 	os.execute(string.format('mkdir -p "%s"', path))
 end
 
---Run shell command and capture its entire stdout.
+-- Run shell command and capture stdout.
 function M.run_cmd(cmd)
 	local f = io.popen(cmd, "r")
 	if not f then
 		return ""
 	end
-	local out = f:read("*a") or ""
+	local result = f:read("*a") or ""
 	f:close()
-	return out
+
+	-- trim trailing whitespace (parentheses drop gsub's second return value)
+	return (result:gsub("%s+$", ""))
 end
 
---Open a SQLite database with a busy timeout.
+-- Open SQLite database with busy timeout.
+-- Jobs are staggered, but the weekly rotate and hourly backup can still overlap them.
 function M.open_db(path)
-	local db, err = sqlite3.open(path or config.DB_PATH)
-	assert(db, "Failed to open database: " .. (err or path or config.DB_PATH))
-	db:busy_timeout(2000)
+	local db, _, err = sqlite3.open(path or config.DB_PATH)
+	assert(db, "Failed to open database: " .. tostring(err or path or config.DB_PATH))
+	db:busy_timeout(5000)
 	return db
 end
 
---Fetch a single row from a SQL query (or nil if no rows).
-function M.fetch_one(db, sql)
-	-- Use nrows as it is intended: in a generic for-loop
-	for row in db:nrows(sql) do
-		return row -- Return the first row only
+-- Fetch the first row of a query with bound parameters (or nil if no rows).
+function M.fetch_one(db, sql, ...)
+	local stmt = assert(db:prepare(sql), "prepare failed: " .. db:errmsg())
+	stmt:bind_values(...)
+	local row
+	for r in stmt:nrows() do
+		row = r
+		break
 	end
-	return nil -- No rows
+	stmt:finalize()
+	return row
+end
+
+-- Write a file atomically so readers never see a partial file.
+function M.write_atomic(path, content)
+	local tmp = path .. ".tmp"
+	local f = assert(io.open(tmp, "w"))
+	assert(f:write(content))
+	assert(f:close())
+	assert(os.rename(tmp, path))
 end
 
 return M
