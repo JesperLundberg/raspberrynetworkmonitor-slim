@@ -44,7 +44,7 @@ Open `http://<host>:8080/network.html`.
 - `app/make_plots.sh`: `WINDOW_HOURS` and the list of plots.
 - `app/crontab`: schedules.
 - `NETMON_IFACE` (environment): network interface for arp-scan. Defaults to
-  `eth0`, then `wlan0`.
+  the interface with the default route, then `eth0`, then `wlan0`.
 
 ## Reset history
 
