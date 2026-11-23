@@ -1,102 +1,61 @@
-# Network Monitor (Slim Docker Version)
+# Network Monitor (slim)
 
-A small, containerized network monitoring setup that:
+Lightweight network monitor for a Raspberry Pi. Cron jobs in the `netmon`
+container measure ping, internet speed and LAN device count into SQLite, render
+PNG plots with gnuplot, and write a `status.json`. The same container serves a
+static page that shows them (busybox `httpd`, port 8080).
 
-- measures ping, speed and device count
-- stores everything in a lightweight SQLite database
-- generates PNG charts with gnuplot
-- serves a simple dashboard via Nginx
+## Run
 
-## Features
-
-- Ping monitoring (1.1.1.1 and 8.8.8.8)
-- Download / upload speed sampling
-- LAN device count
-- Automatic chart generation (desktop + mobile versions)
-- Small JSON status file for quick dashboard rendering
-- Clean and minimal HTML dashboard
-- Runtime SQLite database lives entirely in RAM (tmpfs)
-- Automatic hourly backup ensures persistence without constant disk writes
-
-Charts and status files are temporary and regenerated every cycle.
-
-## Structure
-
-```
-app/        → data collection, plotting, cron
-  lua/      → measurement scripts
-  plots/    → gnuplot configs
-  Dockerfile
-  crontab
-
-web/        → static dashboard HTML
-
-data/       → persisted backup of netmon.db
-
-docker-compose.yml
+```sh
+docker compose up -d --build
 ```
 
-Two containers:
+Open `http://<host>:8080/network.html`.
 
-- **netmon** – runs scripts, writes data, generates charts
-- **netmon_web** – serves the dashboard + generated images
+## How it works
 
-A shared Docker volume passes charts/status between them.
+| Job | Schedule | What |
+| --- | --- | --- |
+| `net_ping.lua` | every 5 min | Ping 1.1.1.1 and 8.8.8.8 (RTT, packet loss) |
+| `net_speed.lua` | every 10 min (minute 2, 12, ...) | Download/upload sample with curl |
+| `net_devices.lua` | every 5 min (minute 1, 6, ...) | Count devices on the LAN with arp-scan |
+| `update_status.lua` | after each job above | Write `status.json` for the status cards |
+| `make_plots.sh` | every 5 min (minute 3, 8, ...) | Render the 24h plots (desktop + mobile sizes) |
+| `backup.sh` | hourly | Copy the tmpfs DB to `./data/netmon.db` |
+| `netmon_rotate.lua` | weekly | Archive rows older than `RETENTION_DAYS` to CSV in `./data/archive`, then delete them |
 
-## Usage
+- The database lives on a tmpfs (to spare the SD card). It is restored from
+  `./data/netmon.db` on start and backed up hourly and on `docker stop`.
+  A hard power loss loses up to an hour of samples.
+- A failed ping, speed test or measurement is stored as NULL, so plots show a
+  gap instead of a drop to 0. A device scan that finds nothing is skipped.
+- Timestamps are epoch seconds (UTC) and shown in local time (`TZ` is set in the
+  Dockerfile and compose file; change both together. busybox `crond` passes
+  that environment on to the jobs).
+- Job output goes to the container's stdout: `docker logs netmon`.
+- The container has a healthcheck: it is unhealthy if `status.json` is older
+  than 10 minutes.
 
-### Build and start
+## Configuration
 
-```bash
-docker compose build
-docker compose up -d
-```
+- `app/lua/netmon_config.lua`: paths, ping hosts and `RETENTION_DAYS`. The
+  plots read the ping hosts from here; `app/network.html` also lists them.
+- `app/make_plots.sh`: `WINDOW_HOURS`, plot sizes and the list of plots.
+- `app/crontab`: schedules.
+- `NETMON_IFACE` (environment): network interface for arp-scan. Defaults to
+  the interface with the default route.
 
-Visit:
+## Reset history
 
-```
-http://localhost:8080/network.html
-```
-
-(Replace `localhost` if hosted elsewhere.)
-
-## Persistence
-
-The live SQLite database is kept in RAM for speed and reduced wear.  
-An hourly backup is written to:
-
-```
-data/netmon.db
-```
-
-On startup, if a backup exists, it is restored automatically.
-
-To reset history:
-
-```bash
+```sh
 docker compose down
 rm data/netmon.db
-touch data/netmon.db
 docker compose up -d
 ```
 
-## Logs & debugging
+## Tests
 
-```bash
-docker logs netmon
-docker logs netmon_web
+```sh
+cd app && luajit tests/test_parse.lua
 ```
-
-Inside the netmon container:
-
-```bash
-docker exec -it netmon sh
-cat /var/log/cron.log
-```
-
-## Notes
-
-- Cron schedules are defined in `app/crontab`.
-- All scripts recreate their own tables if needed.
-- You can adjust sampling intervals by editing the cron file.
-- Works anywhere Docker does.

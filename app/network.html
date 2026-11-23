@@ -272,95 +272,7 @@
 
       <!-- GRAPHS -->
       <main class="grid">
-        <!-- Ping -->
-        <section class="chart-card">
-          <div class="chart-header">
-            <div class="chart-title">
-              <span class="dot"></span>
-              <span>Ping RTT</span>
-            </div>
-            <div class="pill">
-              <span class="pill-dot" style="background: #1e66f5"></span>
-              <span>1.1.1.1</span>
-              <span
-                class="pill-dot"
-                style="background: #40a02b; margin-left: 0.5rem"
-              ></span>
-              <span>8.8.8.8</span>
-            </div>
-          </div>
-          <div class="chart-meta">
-            Round-trip time (ms) over the last 24 hours.
-          </div>
-          <div class="chart-img-wrap">
-            <picture>
-              <!-- Mobile -->
-              <source
-                srcset="netmon/ping_mobile.png"
-                media="(max-width: 768px)"
-              />
-              <!-- Desktop -->
-              <img src="netmon/ping.png" alt="Ping chart" />
-            </picture>
-          </div>
-        </section>
-
-        <!-- Speed -->
-        <section class="chart-card">
-          <div class="chart-header">
-            <div class="chart-title">
-              <span class="dot" style="background: #dc8a78"></span>
-              <span>Internet Speed</span>
-            </div>
-            <div class="pill">
-              <span class="pill-dot" style="background: #dc8a78"></span>
-              <span>Download</span>
-              <span
-                class="pill-dot"
-                style="background: #1e66f5; margin-left: 0.5rem"
-              ></span>
-              <span>Upload</span>
-            </div>
-          </div>
-          <div class="chart-meta">
-            Based on lightweight curl tests (last 24 hours).
-          </div>
-          <div class="chart-img-wrap">
-            <picture>
-              <source
-                srcset="netmon/speed_mobile.png"
-                media="(max-width: 768px)"
-              />
-              <img src="netmon/speed.png" alt="Speed chart" />
-            </picture>
-          </div>
-        </section>
-
-        <!-- Devices -->
-        <section class="chart-card">
-          <div class="chart-header">
-            <div class="chart-title">
-              <span class="dot" style="background: #df8e1d"></span>
-              <span>Active Devices</span>
-            </div>
-            <div class="pill">
-              <span class="pill-dot" style="background: #df8e1d"></span>
-              <span>Devices on LAN</span>
-            </div>
-          </div>
-          <div class="chart-meta">
-            Unique IPs seen on the local network (last 24 hours).
-          </div>
-          <div class="chart-img-wrap">
-            <picture>
-              <source
-                srcset="netmon/devices_mobile.png"
-                media="(max-width: 768px)"
-              />
-              <img src="netmon/devices.png" alt="Devices chart" />
-            </picture>
-          </div>
-        </section>
+        <!-- Chart cards are rendered from CHARTS in the script below. -->
       </main>
 
       <footer>
@@ -370,6 +282,88 @@
 
     <!-- STATUS JSON SCRIPT -->
     <script>
+      const BLUE = "#1e66f5";
+      const GREEN = "#40a02b";
+      const CHARTS = [
+        {
+          file: "ping",
+          title: "Ping RTT",
+          color: BLUE,
+          legend: [
+            { color: BLUE, label: "1.1.1.1" },
+            { color: GREEN, label: "8.8.8.8" },
+          ],
+          meta: "Round-trip time (ms) over the last 24 hours.",
+          alt: "Ping chart",
+        },
+        {
+          file: "speed",
+          title: "Internet Speed",
+          color: "#dc8a78",
+          // Colors match the plot: download is the first line, upload the second.
+          legend: [
+            { color: "#dc8a78", label: "Download" },
+            { color: BLUE, label: "Upload" },
+          ],
+          meta: "Based on lightweight curl tests (last 24 hours).",
+          alt: "Speed chart",
+        },
+        {
+          file: "devices",
+          title: "Active Devices",
+          color: "#df8e1d",
+          legend: [{ color: "#df8e1d", label: "Devices on LAN" }],
+          meta: "Unique IPs seen on the local network (last 24 hours).",
+          alt: "Devices chart",
+        },
+      ];
+
+      function el(tag, className, text) {
+        const e = document.createElement(tag);
+        if (className) e.className = className;
+        if (text != null) e.textContent = text;
+        return e;
+      }
+
+      function dot(className, color) {
+        const d = el("span", className);
+        d.style.background = color;
+        return d;
+      }
+
+      // Plots are regenerated under fixed URLs, so bust the cache per refresh.
+      function renderCharts() {
+        const v = Date.now();
+        const grid = document.querySelector("main.grid");
+
+        for (const c of CHARTS) {
+          const card = el("section", "chart-card");
+
+          const header = el("div", "chart-header");
+          const title = el("div", "chart-title");
+          title.append(dot("dot", c.color), el("span", null, c.title));
+          const pill = el("div", "pill");
+          for (const item of c.legend) {
+            pill.append(dot("pill-dot", item.color), el("span", null, item.label));
+          }
+          header.append(title, pill);
+
+          const wrap = el("div", "chart-img-wrap");
+          const picture = document.createElement("picture");
+          const source = document.createElement("source");
+          source.srcset = `netmon/${c.file}_mobile.png?v=${v}`;
+          source.media = "(max-width: 768px)";
+          const img = document.createElement("img");
+          img.src = `netmon/${c.file}.png?v=${v}`;
+          img.alt = c.alt;
+          picture.append(source, img);
+          wrap.append(picture);
+
+          card.append(header, el("div", "chart-meta", c.meta), wrap);
+          grid.append(card);
+        }
+      }
+
       function formatTime(ts) {
         if (!ts || ts <= 0) return "–";
         const d = new Date(ts * 1000);
@@ -387,6 +381,8 @@
       }
 
       function safeNum(v, decimals) {
+        // Number(null) is 0; a failed measurement is stored as NULL and must show as missing.
+        if (v == null) return null;
         const n = Number(v);
         if (!isFinite(n)) return null;
         return decimals != null ? n.toFixed(decimals) : n.toString();
@@ -447,7 +443,10 @@
         }
       }
 
-      document.addEventListener("DOMContentLoaded", loadStatus);
+      document.addEventListener("DOMContentLoaded", () => {
+        renderCharts();
+        loadStatus();
+      });
     </script>
   </body>
 </html>

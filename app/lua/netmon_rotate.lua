@@ -1,176 +1,84 @@
 #!/usr/bin/env luajit
+-- netmon_rotate.lua
+-- Export rows older than RETENTION_DAYS to one CSV per table in ARCHIVE_DIR,
+-- then delete them so the tmpfs-backed database stays bounded.
 
 local sqlite3 = require("lsqlite3")
-local utils = require("netmon_utils")
 local config = require("netmon_config")
+local utils = require("netmon_utils")
 
-local LIVE_DB_PATH = config.DB_PATH
-local ARCHIVE_DIR = config.ARCHIVE_DIR
+local TABLES = { "ping", "speed", "devices" }
 
--- Make sure archive directory exists
-utils.ensure_dir(ARCHIVE_DIR)
-
--- Open live DB (shared helper sets busy_timeout etc.)
-local live_db = utils.open_db(LIVE_DB_PATH)
-
--- We keep only rows from this year in the live DB
-local CURRENT_YEAR = tonumber(os.date("%Y"))
-
--- Cache for archive DB handles and their prepared INSERT statements
-local archive_dbs = {}
-local archive_stmts = {}
-
--- Open (or create) an archive DB for a specific year and prepare INSERT statements
-local function get_archive_db_and_stmts(year)
-	-- Shortcut if handle already exists
-	if archive_dbs[year] then
-		return archive_dbs[year], archive_stmts[year]
+local function csv_field(v)
+	if v == nil then
+		return ""
 	end
-
-	local path = string.format("%s/netmon_%d.db", ARCHIVE_DIR, year)
-	local adb = utils.open_db(path)
-
-	-- Ensure tables exist in the archive DB
-	local create_sql = [[
-    CREATE TABLE IF NOT EXISTS ping (
-      ts          INTEGER NOT NULL,
-      host        TEXT    NOT NULL,
-      rtt_ms      REAL,
-      packet_loss REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS speed (
-      ts            INTEGER NOT NULL,
-      download_mbps REAL,
-      upload_mbps   REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS devices (
-      ts           INTEGER NOT NULL,
-      device_count INTEGER
-    );
-  ]]
-	assert(adb:exec(create_sql) == sqlite3.OK, "Failed to create archive tables")
-
-	local stmts = {}
-
-	stmts.ping = assert(
-		adb:prepare("INSERT INTO ping (ts, host, rtt_ms, packet_loss) VALUES (?, ?, ?, ?);"),
-		"Failed to prepare INSERT for ping in archive DB"
-	)
-
-	stmts.speed = assert(
-		adb:prepare("INSERT INTO speed (ts, download_mbps, upload_mbps) VALUES (?, ?, ?);"),
-		"Failed to prepare INSERT for speed in archive DB"
-	)
-
-	stmts.devices = assert(
-		adb:prepare("INSERT INTO devices (ts, device_count) VALUES (?, ?);"),
-		"Failed to prepare INSERT for devices in archive DB"
-	)
-
-	archive_dbs[year] = adb
-	archive_stmts[year] = stmts
-
-	return adb, stmts
+	local s = tostring(v)
+	if s:find('[,"\n]') then
+		s = '"' .. s:gsub('"', '""') .. '"'
+	end
+	return s
 end
 
--- Move all rows from table `tbl` whose year is not equal to CURRENT_YEAR into archives
-local function move_table(tbl)
-	local stmt_key
-	if tbl == "ping" then
-		stmt_key = "ping"
-	elseif tbl == "speed" then
-		stmt_key = "speed"
-	elseif tbl == "devices" then
-		stmt_key = "devices"
-	else
-		error("Unsupported table: " .. tostring(tbl))
+-- Export old rows of one table. Returns false when there is nothing to archive.
+local function archive_table(db, name, cutoff_ts)
+	local archive_path = ("%s/netmon_%s_%s.csv"):format(config.ARCHIVE_DIR, name, os.date("!%Y%m%d"))
+
+	-- `name` comes from the fixed TABLES list above, never from input.
+	local stmt = assert(db:prepare(("SELECT * FROM %s WHERE ts < ? ORDER BY ts;"):format(name)), db:errmsg())
+	stmt:bind_values(cutoff_ts)
+
+	local names = stmt:get_names()
+	local lines = { table.concat(names, ",") }
+	for row in stmt:rows() do
+		local fields = {}
+		for i = 1, #names do
+			fields[i] = csv_field(row[i])
+		end
+		lines[#lines + 1] = table.concat(fields, ",")
+	end
+	stmt:finalize()
+
+	if #lines == 1 then
+		return false
 	end
 
-	-- Select all rows that are NOT in the current year
-	local select_sql = string.format(
-		[[
-    SELECT *
-    FROM %s
-    WHERE CAST(strftime('%%Y', ts, 'unixepoch', 'localtime') AS INTEGER) <> %d
-  ]],
-		tbl,
-		CURRENT_YEAR
-	)
+	-- Append, so a second run on the same day does not clobber earlier output.
+	-- The header is only written when the file is new.
+	local existing = io.open(archive_path, "r")
+	if existing then
+		existing:close()
+		table.remove(lines, 1)
+	end
+	local f = assert(io.open(archive_path, "a"))
+	assert(f:write(table.concat(lines, "\n"), "\n"))
+	assert(f:close())
 
-	-- First pass: copy rows into archive DBs
-	for row in live_db:nrows(select_sql) do
-		local ts = row.ts
-		local year = tonumber(os.date("%Y", ts))
+	-- Only delete after the archive has been written successfully.
+	local del = assert(db:prepare(("DELETE FROM %s WHERE ts < ?;"):format(name)), db:errmsg())
+	del:bind_values(cutoff_ts)
+	local rc = del:step()
+	del:finalize()
+	assert(rc == sqlite3.DONE, "delete failed: " .. db:errmsg())
+	return true
+end
 
-		local _, stmts = get_archive_db_and_stmts(year)
-		local stmt = stmts[stmt_key]
-		assert(stmt, "Missing prepared statement for table " .. tbl .. " in year " .. year)
+local function main()
+	utils.ensure_dir(config.ARCHIVE_DIR)
+	local db = utils.open_db(config.DB_PATH)
 
-		if tbl == "ping" then
-			-- Columns: ts, host, rtt_ms, packet_loss
-			stmt:reset()
-			assert(
-				stmt:bind_values(row.ts, row.host, row.rtt_ms, row.packet_loss) == sqlite3.OK,
-				"bind_values failed for ping"
-			)
-			assert(stmt:step() == sqlite3.DONE, "INSERT into archive ping failed")
-		elseif tbl == "speed" then
-			-- Columns: ts, download_mbps, upload_mbps
-			stmt:reset()
-			assert(
-				stmt:bind_values(row.ts, row.download_mbps, row.upload_mbps) == sqlite3.OK,
-				"bind_values failed for speed"
-			)
-			assert(stmt:step() == sqlite3.DONE, "INSERT into archive speed failed")
-		elseif tbl == "devices" then
-			-- Columns: ts, device_count
-			stmt:reset()
-			assert(stmt:bind_values(row.ts, row.device_count) == sqlite3.OK, "bind_values failed for devices")
-			assert(stmt:step() == sqlite3.DONE, "INSERT into archive devices failed")
+	local cutoff_ts = os.time() - config.RETENTION_DAYS * 86400
+	local removed = false
+	for _, name in ipairs(TABLES) do
+		if utils.table_exists(db, name) and archive_table(db, name, cutoff_ts) then
+			removed = true
 		end
 	end
 
-	-- Second pass: delete those rows from the live DB
-	local delete_sql = string.format(
-		[[
-    DELETE FROM %s
-    WHERE CAST(strftime('%%Y', ts, 'unixepoch', 'localtime') AS INTEGER) <> %d
-  ]],
-		tbl,
-		CURRENT_YEAR
-	)
-
-	assert(
-		live_db:exec("BEGIN; " .. delete_sql .. "; COMMIT;") == sqlite3.OK,
-		"Delete failed from live DB for table: " .. tbl
-	)
-end
-
--- Run rotation for each table
-move_table("ping")
-move_table("speed")
-move_table("devices")
-
--- Reclaim space in live DB
-live_db:exec("VACUUM;")
-
--- Finalize statements and close DBs
-for _, stmts in pairs(archive_stmts) do
-	if stmts.ping then
-		stmts.ping:finalize()
+	if removed then
+		db:exec("VACUUM;")
 	end
-	if stmts.speed then
-		stmts.speed:finalize()
-	end
-	if stmts.devices then
-		stmts.devices:finalize()
-	end
-end
-
-for _, db in pairs(archive_dbs) do
 	db:close()
 end
 
-live_db:close()
+main()

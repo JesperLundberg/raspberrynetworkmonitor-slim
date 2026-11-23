@@ -1,22 +1,25 @@
-LUA_PATH=/opt/netmon/lua/?.lua;/opt/netmon/lua/?/init.lua;;
+# busybox crond format: no user column. TZ and LUA_PATH are inherited from the
+# environment crond is started in (Dockerfile ENV / compose), not set here.
+# Output goes to PID 1's stdout so `docker logs` works and no file grows forever.
+
+# Each collection job is followed by a status refresh so status.json never lags
+# behind the newest row. Status only reads the latest rows, so there is no reason
+# to run it on its own schedule.
 
 # Ping every 5th minute: 00,05,10,...
-*/5 * * * * root /opt/netmon/lua/net_ping.lua >> /var/log/cron.log 2>&1
+*/5 * * * * (/opt/netmon/lua/net_ping.lua && /opt/netmon/lua/update_status.lua) >> /proc/1/fd/1 2>&1
 
 # Speed every 10th minute, but at minute 2,12,22,...
-2-59/10 * * * * root /opt/netmon/lua/net_speed.lua >> /var/log/cron.log 2>&1
+2-59/10 * * * * (/opt/netmon/lua/net_speed.lua && /opt/netmon/lua/update_status.lua) >> /proc/1/fd/1 2>&1
 
 # Devices every 5th minute, but at minute 1,6,11,...
-1-59/5 * * * * root /opt/netmon/lua/net_devices.lua >> /var/log/cron.log 2>&1
+1-59/5 * * * * (/opt/netmon/lua/net_devices.lua && /opt/netmon/lua/update_status.lua) >> /proc/1/fd/1 2>&1
 
-# Plots every 5th minute, but at minute 3,8,13,...
-3-59/5 * * * * root /opt/netmon/make_plots.sh >> /var/log/cron.log 2>&1
+# Plots every 5th minute, but at minute 3,8,13,... (6 gnuplot runs; the Pi is the bottleneck)
+3-59/5 * * * * /opt/netmon/make_plots.sh >> /proc/1/fd/1 2>&1
 
-# Status every minute (but does not touch database)
-* * * * * root /opt/netmon/lua/update_status.lua >> /var/log/cron.log 2>&1
+# Save DB from tmpfs to disk every hour
+0 * * * * /opt/netmon/backup.sh >> /proc/1/fd/1 2>&1
 
-# Save the db to disk (from ram) every hour
-0 * * * * root sqlite3 /opt/netmon/db/netmon.db ".backup '/opt/netmon/backups/netmon.db'" >> /var/log/cron.log 2>&1
-
-# Run the rotate script once a week at 00 (but wait 15 seconds to avoid conflicts)
-0 0 * * 0 root sleep 15 && /opt/netmon/lua/netmon_rotate.lua >> /var/log/cron.log 2>&1
+# Rotate archives once a week (but wait 15 seconds to avoid conflicts)
+0 0 * * 0 sleep 15 && /opt/netmon/lua/netmon_rotate.lua >> /proc/1/fd/1 2>&1
