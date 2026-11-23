@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     network_mode: host
     cap_add: [NET_RAW, NET_ADMIN]
+    # Leave time for the shutdown backup in entrypoint.sh.
+    stop_grace_period: 30s
     environment: [TZ=Europe/Stockholm]
     tmpfs: [/opt/netmon/db:size=20m]
     volumes:
@@ -13,6 +15,14 @@ services:
       - ./data:/opt/netmon/backups
       # Persist the archives on the host
       - ./data/archive:/opt/netmon/archive
+    healthcheck:
+      # status.json is rewritten after every collection job (ping runs every 5
+      # minutes); fail if it is older than 10.
+      test: ["CMD-SHELL", "test -n \"$(find /var/www/html/netmon/status.json -mmin -10 2>/dev/null)\""]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 6m
 
   web:
     build: ./web
@@ -20,6 +30,7 @@ services:
     restart: unless-stopped
     ports: [8080:80]
     volumes: [netmon-www:/usr/share/nginx/html/netmon:ro]
+    depends_on: [netmon]
 
 volumes:
   netmon-www:
