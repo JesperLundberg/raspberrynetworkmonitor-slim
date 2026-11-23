@@ -18,3 +18,7 @@ set yrange [0:*]
 set xdata time
 set timefmt "%Y-%m-%d %H:%M:%S"
 set format x "%H:%M\n%d/%m"
+
+# One label every 4 hours (00:00, 04:00, ...); hourly labels are unreadable.
+set xtics 4*3600
+set mxtics 4
