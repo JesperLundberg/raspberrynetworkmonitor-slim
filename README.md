@@ -2,8 +2,8 @@
 
 Lightweight network monitor for a Raspberry Pi. Cron jobs in the `netmon`
 container measure ping, internet speed and LAN device count into SQLite, render
-PNG plots with gnuplot, and write a `status.json`. The `web` container (nginx)
-serves a static page that shows them.
+PNG plots with gnuplot, and write a `status.json`. The same container serves a
+static page that shows them (busybox `httpd`, port 8080).
 
 ## Run
 
@@ -40,11 +40,11 @@ Open `http://<host>:8080/network.html`.
 ## Configuration
 
 - `app/lua/netmon_config.lua`: paths, ping hosts and `RETENTION_DAYS`. The
-  ping hosts are also written in the ping filters in `app/make_plots.sh`.
-- `app/make_plots.sh`: `WINDOW_HOURS` and the list of plots.
+  plots read the ping hosts from here; `app/network.html` also lists them.
+- `app/make_plots.sh`: `WINDOW_HOURS`, plot sizes and the list of plots.
 - `app/crontab`: schedules.
 - `NETMON_IFACE` (environment): network interface for arp-scan. Defaults to
-  the interface with the default route, then `eth0`, then `wlan0`.
+  the interface with the default route.
 
 ## Reset history
 

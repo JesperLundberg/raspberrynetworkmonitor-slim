@@ -6,8 +6,8 @@ C.ARCHIVE_DIR = "/opt/netmon/archive"
 C.JSON_DIR = "/var/www/html/netmon"
 C.JSON_PATH = C.JSON_DIR .. "/status.json"
 
--- Hosts pinged by net_ping.lua and shown by update_status.lua.
--- make_plots.sh has the same two hosts in its ping filters; change both together.
+-- Hosts pinged by net_ping.lua, shown by update_status.lua and plotted by make_plots.sh
+-- (the first two). network.html lists them too; change it together with this.
 C.PING_HOSTS = { "1.1.1.1", "8.8.8.8" }
 
 -- Rows older than this are exported to a CSV in ARCHIVE_DIR and then deleted.

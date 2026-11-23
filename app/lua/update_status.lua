@@ -27,12 +27,8 @@ end
 
 -- The jobs create their own tables on first run, so right after a fresh start
 -- some may not exist yet. A missing table simply means "no data".
-local function table_exists(db, name)
-	return utils.fetch_one(db, "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?;", name) ~= nil
-end
-
 local function latest_or_null(db, table_name, getter)
-	if not table_exists(db, table_name) then
+	if not utils.table_exists(db, table_name) then
 		return nil
 	end
 	return getter(db)
@@ -62,7 +58,7 @@ local function main()
 	local db = utils.open_db(config.DB_PATH)
 
 	local ping_rows = {}
-	if table_exists(db, "ping") then
+	if utils.table_exists(db, "ping") then
 		ping_rows = get_latest_ping_for_hosts(db, config.PING_HOSTS)
 	end
 	local speed_row = latest_or_null(db, "speed", get_latest_speed)

@@ -3,14 +3,16 @@ services:
     build: ./app
     container_name: netmon
     restart: unless-stopped
+    # Host networking: arp-scan needs the LAN, and the page is served on port 8080.
     network_mode: host
     cap_add: [NET_RAW, NET_ADMIN]
     # Leave time for the shutdown backup in entrypoint.sh.
     stop_grace_period: 30s
     environment: [TZ=Europe/Stockholm]
-    tmpfs: [/opt/netmon/db:size=20m]
+    tmpfs:
+      - /opt/netmon/db:size=20m
+      - /var/www/html/netmon:size=20m
     volumes:
-      - netmon-www:/var/www/html/netmon
       # Persist SQLite DB on the host
       - ./data:/opt/netmon/backups
       # Persist the archives on the host
@@ -23,19 +25,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 6m
-
-  web:
-    build: ./web
-    container_name: netmon_web
-    restart: unless-stopped
-    ports: [8080:80]
-    volumes: [netmon-www:/usr/share/nginx/html/netmon:ro]
-    depends_on: [netmon]
-
-volumes:
-  netmon-www:
-    driver: local
-    driver_opts:
-      type: tmpfs
-      device: tmpfs
-      o: size=20m

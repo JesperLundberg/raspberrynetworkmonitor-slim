@@ -21,13 +21,33 @@ function M.run_cmd(cmd)
 	return (result:gsub("%s+$", ""))
 end
 
--- Open SQLite database with busy timeout.
+-- Open SQLite database with busy timeout, optionally creating a schema first.
 -- Jobs are staggered, but the weekly rotate and hourly backup can still overlap them.
-function M.open_db(path)
-	local db, _, err = sqlite3.open(path or config.DB_PATH)
-	assert(db, "Failed to open database: " .. tostring(err or path or config.DB_PATH))
+function M.open_db(path, schema)
+	path = path or config.DB_PATH
+	if schema then
+		M.ensure_dir(config.DB_DIR)
+	end
+	local db, _, err = sqlite3.open(path)
+	assert(db, "Failed to open database: " .. tostring(err or path))
 	db:busy_timeout(5000)
+	if schema then
+		assert(db:exec(schema) == sqlite3.OK, "Failed to create schema: " .. db:errmsg())
+	end
 	return db
+end
+
+function M.table_exists(db, name)
+	return M.fetch_one(db, "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?;", name) ~= nil
+end
+
+-- Run a single INSERT with bound values.
+function M.insert(db, sql, ...)
+	local stmt = assert(db:prepare(sql), db:errmsg())
+	assert(stmt:bind_values(...) == sqlite3.OK, "bind failed: " .. db:errmsg())
+	local rc = stmt:step()
+	stmt:finalize()
+	assert(rc == sqlite3.DONE, "insert failed: " .. db:errmsg())
 end
 
 -- Fetch the first row of a query with bound parameters (or nil if no rows).

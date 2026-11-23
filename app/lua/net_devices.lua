@@ -1,6 +1,5 @@
 #!/usr/bin/env luajit
 
-local sqlite3 = require("lsqlite3")
 local utils = require("netmon_utils")
 local config = require("netmon_config")
 local parse = require("netmon_parse")
@@ -33,8 +32,7 @@ local function default_route_iface()
 end
 
 local function detect_iface()
-	-- Allow both NETMON_IFACE and ARP_SCAN_IFACE as overrides
-	local env = os.getenv("NETMON_IFACE") or os.getenv("ARP_SCAN_IFACE")
+	local env = os.getenv("NETMON_IFACE")
 	if env and env ~= "" and iface_exists(env) then
 		return env
 	end
@@ -42,36 +40,16 @@ local function detect_iface()
 	if route and iface_exists(route) then
 		return route
 	end
-	if iface_exists("eth0") then
-		return "eth0"
-	end
-	if iface_exists("wlan0") then
-		return "wlan0"
-	end
 	return nil
 end
 
-local function open_db()
-	utils.ensure_dir(config.DB_DIR)
-	local db = utils.open_db(config.DB_PATH)
-	local rc = db:exec([[
+local SCHEMA = [[
     CREATE TABLE IF NOT EXISTS devices (
       ts           INTEGER NOT NULL,
       device_count INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_devices_ts ON devices(ts);
-  ]])
-	assert(rc == sqlite3.OK, "Failed to create devices table: " .. db:errmsg())
-	return db
-end
-
-local function insert_devices(db, ts, count)
-	local stmt = assert(db:prepare("INSERT INTO devices (ts, device_count) VALUES (?, ?);"), db:errmsg())
-	assert(stmt:bind_values(ts, count) == sqlite3.OK, "bind failed: " .. db:errmsg())
-	local rc = stmt:step()
-	stmt:finalize()
-	assert(rc == sqlite3.DONE, "INSERT into devices failed: " .. db:errmsg())
-end
+  ]]
 
 local function main()
 	local iface = detect_iface()
@@ -92,8 +70,8 @@ local function main()
 		os.exit(1)
 	end
 
-	local db = open_db()
-	insert_devices(db, os.time(), count)
+	local db = utils.open_db(config.DB_PATH, SCHEMA)
+	utils.insert(db, "INSERT INTO devices (ts, device_count) VALUES (?, ?);", os.time(), count)
 	db:close()
 
 	io.stdout:write(string.format("net_devices.lua: iface=%s count=%d\n", iface, count))

@@ -20,10 +20,6 @@ local function csv_field(v)
 	return s
 end
 
-local function table_exists(db, name)
-	return utils.fetch_one(db, "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?;", name) ~= nil
-end
-
 -- Export old rows of one table. Returns false when there is nothing to archive.
 local function archive_table(db, name, cutoff_ts)
 	local archive_path = ("%s/netmon_%s_%s.csv"):format(config.ARCHIVE_DIR, name, os.date("!%Y%m%d"))
@@ -74,7 +70,7 @@ local function main()
 	local cutoff_ts = os.time() - config.RETENTION_DAYS * 86400
 	local removed = false
 	for _, name in ipairs(TABLES) do
-		if table_exists(db, name) and archive_table(db, name, cutoff_ts) then
+		if utils.table_exists(db, name) and archive_table(db, name, cutoff_ts) then
 			removed = true
 		end
 	end

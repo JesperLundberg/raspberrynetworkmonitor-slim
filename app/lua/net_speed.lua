@@ -1,6 +1,5 @@
 #!/usr/bin/env luajit
 
-local sqlite3 = require("lsqlite3")
 local utils = require("netmon_utils")
 local config = require("netmon_config")
 local parse = require("netmon_parse")
@@ -16,28 +15,14 @@ local UPLOAD_SIZE = 512 * 1024 -- bytes
 
 local EMPTY_JSON = '{"bytes":0,"time":0}'
 
-local function open_db()
-	utils.ensure_dir(config.DB_DIR)
-	local db = utils.open_db(config.DB_PATH)
-	local rc = db:exec([[
+local SCHEMA = [[
     CREATE TABLE IF NOT EXISTS speed (
       ts            INTEGER NOT NULL,
       download_mbps REAL,
       upload_mbps   REAL
     );
     CREATE INDEX IF NOT EXISTS idx_speed_ts ON speed(ts);
-  ]])
-	assert(rc == sqlite3.OK, "Failed to create speed table: " .. db:errmsg())
-	return db
-end
-
-local function insert_speed(db, ts, dl_mbps, ul_mbps)
-	local stmt = assert(db:prepare("INSERT INTO speed (ts, download_mbps, upload_mbps) VALUES (?, ?, ?);"), db:errmsg())
-	assert(stmt:bind_values(ts, dl_mbps, ul_mbps) == sqlite3.OK, "bind failed: " .. db:errmsg())
-	local rc = stmt:step()
-	stmt:finalize()
-	assert(rc == sqlite3.DONE, "INSERT into speed failed: " .. db:errmsg())
-end
+  ]]
 
 -- Returns Mbit/s, or nil when nothing was transferred.
 local function calc_mbit(bytes, seconds)
@@ -86,9 +71,9 @@ local function main()
 	local dl_mbit = measure_download()
 	local ul_mbit = measure_upload()
 
-	local db = open_db()
+	local db = utils.open_db(config.DB_PATH, SCHEMA)
 	local ts = os.time()
-	insert_speed(db, ts, dl_mbit, ul_mbit)
+	utils.insert(db, "INSERT INTO speed (ts, download_mbps, upload_mbps) VALUES (?, ?, ?);", ts, dl_mbit, ul_mbit)
 	db:close()
 
 	io.stdout:write(string.format("Saved speed sample at %d: dl=%s Mbps, ul=%s Mbps\n", ts, fmt(dl_mbit), fmt(ul_mbit)))
