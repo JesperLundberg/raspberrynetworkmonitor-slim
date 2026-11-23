@@ -7,8 +7,9 @@ local parse = require("netmon_parse")
 
 -- Ping a host and parse average RTT (nil if no reply) and packet loss.
 local function ping_host(host)
-	-- -W bounds each reply wait so a dead link cannot stall the job.
-	local out = utils.run_cmd(string.format("ping -n -c 4 -W 2 %s 2>/dev/null", host))
+	-- -W bounds each reply wait so a dead link cannot stall the job. No -n: busybox
+	-- ping does not accept it, and hosts are IP addresses anyway.
+	local out = utils.run_cmd(string.format("ping -c 4 -W 2 %s 2>/dev/null", host))
 	return parse.parse_ping(out)
 end
 
